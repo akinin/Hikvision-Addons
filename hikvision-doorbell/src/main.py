@@ -207,11 +207,13 @@ async def main():
                         )
                         logger.info(f"Using MQTT from .env after error: {mqtt_host}")
 
-        if config.mqtt is None:
+        if config.mqtt is None and config.doorbells:
             raise RuntimeError(
                 "MQTT configuration is unavailable. Configure Mosquitto Broker "
                 "or provide an external MQTT host."
             )
+        if config.mqtt is None:
+            logger.warning("MQTT is unavailable; starting without devices for diagnostics")
             
     except Exception as e:
         logger.error("Configuration error: {}", e)
