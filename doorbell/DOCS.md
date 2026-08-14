@@ -1,262 +1,169 @@
-# Home Assistant App: Hikvision Doorbell
+# Hikvision Домофон — настройка
 
-## Configuration
-**Note**: _Remember to restart the App when the configuration is changed._
+Приложение подключается к домофонам и внутренним панелям Hikvision по локальному SDK, а элементы Home Assistant создаёт через MQTT Discovery.
 
-**Note**: _When the App connects to a doorbell for the first time, it might happen that your door station gets stuck, because it is downloading the complete backlog of events. You will also see a lot of false events just give it a while, it can sometimes takes a few hours... A reboot might be required._
+## 1. Требования
 
-The following configuration options are available to be setup using the **Configuration** tab of this App in the Home Assistant interface:
+- Home Assistant OS или Home Assistant Supervised;
+- MQTT-брокер, например официальное приложение **Mosquitto Broker**;
+- постоянный локальный IP-адрес каждого устройства Hikvision;
+- доступ Home Assistant к порту SDK устройства, обычно TCP `8000`;
+- учётная запись Hikvision с необходимыми правами.
 
-### Doorbells
-Configure the connection to the doorbells. If a value is not defined, the default setting is used.
+Порт SDK не следует публиковать в интернет. Для удалённого доступа используйте VPN.
 
-For each of your doorbells, repeat the following configuration:
+## 2. Настройка MQTT
 
-| Option          | Default       | Description                           |
-| --------        | ----          | ----                                  |
-| name            |               | Custom name for this doorbell (visibile in the HA UI and the sensors names)
-| ip              |               | IP address of the doorbell
-| port            | 8000          | (Optional) Port of the doorbell
-| username        | admin         | Username to access the doorbell
-| password        |               | Password to access the doorbell
-| output_relays   | 2             | (optional) Set this option if you don't see the correct number of door switches or if you have attached an secure door control module on your indoor
-| scenes          | false         | (optional) Extra Scene buttons for indoor panels
-| call_state_poll | 5             | (optional) Make the call state poll every 5 sec, for devices that dont support the ringing event, devices for example running 3.7.x or newer... 
+Если используется приложение Mosquitto Broker, секцию **MQTT** обычно можно оставить пустой: Supervisor передаст параметры подключения автоматически.
 
+Для внешнего брокера заполните:
 
-#### Example config
-The following configuration setups two doorbells, named `Front door` and `Rear door` and an `Indoor` panel
 ```yaml
-- name: "Front door"
-  ip: 192.168.0.1
-  username: admin
-  password: password
-  output_relays: 2
-
-- name: "Indoor"
-  ip: 192.168.0.3
-  username: admin
-  password: password
-  scenes: true
-  call_state_poll: 5
-
+mqtt:
+  host: 192.168.1.10
+  port: 1883
+  ssl: false
+  username: homeassistant
+  password: ваш_пароль
 ```
 
-### System
-The following system settings are available:
+После запуска проверьте, что интеграция **MQTT** добавлена в разделе **Настройки → Устройства и службы**.
 
-| Name              | Default               | Description                           |
-| --------          | ----                  | ----                                  |
-| log_level         | WARNING               | The verbosity of the App logs. Available options: _ERROR_ _WARNING_ _INFO_ _DEBUG_
-| sdk_log_level     | NONE               | The verbosity of the Hikvision SDK logs. Available options: _NONE_ _ERROR_ _INFO_ _DEBUG_
+## 3. Добавление домофона
 
-#### Example config
+Минимальная конфигурация:
+
 ```yaml
-log_level: WARNING
-sdk_log_level: NONE
+doorbells:
+  - name: Главный вход
+    ip: 192.168.1.20
+    username: admin
+    password: ваш_пароль
+system:
+  log_level: INFO
+  sdk_log_level: NONE
+mqtt: {}
 ```
 
-## Setup
+Для нескольких устройств добавьте отдельный элемент списка:
 
-### Requirements
-
-A running MQTT broker.
-
-You can use the officially supported __Mosquitto broker__, available in the official apps section of your Home Assistant instance. 
-You can quickly set it up by clicking the following button:
-[![Open your Home Assistant instance and show the dashboard of a Supervisor App.](https://my.home-assistant.io/badges/supervisor_addon.svg)](https://my.home-assistant.io/redirect/supervisor_addon/?addon=core_mosquitto), or by manually finding it inside your `App store`.
-
-After you have started the __Mosquitto broker__ App, you should be able to automatically connect Home Assistant to the broker by going to `Settings` -> `Devices & Services` -> `MQTT`, and clicking `Configure`.
-
-(Optional) If you have an external MQTT broker, you can define it the App config too:
-
-#### Example config
 ```yaml
-host: 192.168.0.17
-port: 1883
-ssl: false
-username: user
-password: pass
+doorbells:
+  - name: Калитка
+    ip: 192.168.1.20
+    username: admin
+    password: ваш_пароль
+    output_relays: 2
+  - name: Внутренняя панель
+    ip: 192.168.1.21
+    username: admin
+    password: ваш_пароль
+    scenes: true
+    call_state_poll: 5
 ```
 
-### Getting started
+### Параметры устройства
 
-After you have setup an MQTT broker, you can start __Hikvision Doorbell__. 
-Each of you defined doorbell should be visible as a device under `Settings` -> `Devices & Services` -> `Devices`.
+| Параметр | Назначение |
+| --- | --- |
+| `name` | Название устройства в Home Assistant и MQTT |
+| `ip` | Постоянный локальный IP-адрес |
+| `port` | Порт Hikvision SDK, по умолчанию `8000` |
+| `username` | Пользователь Hikvision |
+| `password` | Пароль Hikvision |
+| `output_relays` | Количество реле двери, если автоопределение ошиблось |
+| `scenes` | Режимы охраны и сценарии внутренней панели |
+| `call_state_poll` | Опрос состояния звонка в секундах для новых прошивок без события RING |
+| `scene_state_poll` | Опрос текущего сценария внутренней панели |
+| `alarm_state_poll` | Опрос состояния охраны внутренней панели |
 
-### Sensors, switches, input text and buttons
-For each of your doorbells, the following entities are available:
+После изменения конфигурации перезапустите приложение.
 
-- Sensors
-  - `Call state` (_idle_, _ringing_, _dismissed_,)
-  - `Scene sensor` (Alarm/Scene events (Indoor Station Only))
-  - `Latest snapshot` (On incoming ring event, it will take a snapshot)
-- Switches
-  - `Door relays` (one for each available relay, open the door connected to the output relay of the device)
-- Input Select
-  - `Backlight` (Turn the backlight of the outdoor station to on/off/auto)
-- Input Text
-  - `ISAPI Request` (Custom ISAPI control, see more info below!)
-- Buttons
-  - `Answer call` (The device needs to be connected to Hikconnect in to make "answer" work, if its not possible, you can use "reject" instead)
-  - `Hangup call` (The device needs to be connected to Hikconnect in to make "hangup" work, if its not possible, you can use "reject" instead)
-  - `Reject call`
-  - `Reboot`
-  - `Take Snapshot` (Grabs a snapshot from the outdoor station and updates the image entity)
-  - ...
-- Device triggers (depending on device model)
-  - `Motion detected`
-  - `Tamper alarm`
-  - `Door not closed`
-  - ...
+## 4. Создаваемые элементы
 
-  The _device triggers_ are used to signal alarms and events generated by the doorbells (the type of events generated depends on the specific model).
-  These are special entities that do not have a state associated to them (therefore are not visible in the list of HA entities, but under each `Device info` page). 
-  
-  **NOTE**: The device triggers are discovered *once the associated event is triggered on the device at least once.*
+Набор зависит от модели и прошивки устройства:
 
-   **NOTE**: Devices that run newer firmare like 3.7.x dont support the ring event anymore, you need to manually poll it now using the call_state_poll in the config.*
-  
-  **NOTE**: For some reason there is no "door not closed" device trigger, here is a workaround:
+- состояние вызова;
+- изображение последнего снимка;
+- кнопки снимка, перезагрузки, ответа, отклонения и завершения вызова;
+- переключатели реле двери и COM-портов;
+- режим подсветки наружной панели;
+- режимы охраны внутренней панели;
+- диагностические сенсоры;
+- события движения, вскрытия, открытия двери, карты, лица или отпечатка.
 
-  https://community.home-assistant.io/t/hikvision-doorbell-videointercom-integration/532796/537
+Некоторые триггеры устройства появляются только после того, как соответствующее событие впервые поступит от домофона.
 
-  https://community.home-assistant.io/t/hikvision-doorbell-videointercom-integration/532796/2297?
-  
-  
-  You can use a [device trigger](https://www.home-assistant.io/docs/automation/trigger/#device-triggers) in an automation by using a trigger of type `Device`.
-  Check out the [Automating Home Assistant](https://www.home-assistant.io/getting-started/automation/) guide on automations or the [Automation](https://www.home-assistant.io/docs/automation/) documentation for full details.
-  
-  <p align="center">
-    <img src="https://raw.githubusercontent.com/pergolafabio/Hikvision-Addons/main/hikvision-doorbell/assets/docs_device_triggers_automation.png" width="600px" />
-  </p>
+## 5. Журналы
 
-## Isapi Control
-   - `Isapi request` (This input text is usefull for sending ISAPI commands to indoor/outdoor devices. Indoor devices dont have port 80 open to send ISAPI commands, but it does work using this app, since its based on the SDK. Be carefull using this service, it can crash the app/docker if not properly used. An example service is posted below. GET/PUT is mandatory, as well as the ISAPI command, the JSON/XML is optional, depending on the command used. Make sure there is only 1 space between the input. A sample list of usefull ISAPI commands can be found here... [ISAPI](https://github.com/pergolafabio/Hikvision-Addons/blob/main/doorbell/ISAPI.md)
-   
-   For a full documentation, see here: [SDK Development Guide](https://github.com/pergolafabio/Hikvision-Addons/blob/main/hikvision-doorbell/docs/Device%20Network%20SDK.pdf)
+Для обычной работы используйте:
 
-
-  ```
-  # Get call status
-  action: text.set_value
-  target:
-    entity_id: text.ds_kd8003_isapi_request
-  data:
-    value: GET /ISAPI/VideoIntercom/callStatus?format=json
-
-  # Open a door
-  action: text.set_value
-  target:
-    entity_id: text.ds_kd8003_isapi_request
-  data:
-    value: PUT /ISAPI/AccessControl/RemoteControl/door/1 <RemoteControlDoor><cmd>open</cmd></RemoteControlDoor>
-
-  ```
-
-
-## Sending commands to the doorbells
-
-There are two ways in which you can interact with your doorbells: 
-- via the automatically created MQTT entities (switches, buttons)
-- manually invoking the app `stdin` service
-
-### MQTT entities
-
-This app automatically creates [switches](https://www.home-assistant.io/integrations/switch/) and [buttons](https://www.home-assistant.io/integrations/button/) you can toggle and react to from the Home Assistant UI or from your own automations.
-
-### STDIN service (advanced)
-
-There is an advanced method to interact with the devices by sending a text message to the app on its `standard input` (STDIN).
-You can use the built-in `hassio.addon_stdin` service provided by Home Assistant.
-
-The input string must be in the format
-```
-<command> <doorbell_name> <optional_parameter>
-```
-- `<command>` is one of:
-
-  | Command     | Description                                               |
-  | --------    | ----                                                      |
-  | unlock      | Unlock the specified door (`<optional_parameter>` must be `1` or `2`) connected to the doorbell station output relay
-  | reboot      | Reboot the specified  door station
-  | reject      | Reject the incoming call and stop the indoor stations from ringing
-  | request     | Unknown
-  | cancel      | Unknown
-  | answer      | Answers the call, usefull in combination with "hangUp" afterwards, so the intercom stops ringing (idle) and you can start two way audio with Frigate for example
-  | reject      | Unknown
-  | bellTimeout | Unknown
-  | hangUp      | Hangs up the call, usefull in combination with "answer" before, so the intercom stops ringing (idle) and you can start two way audio with Frigate for example
-  | deviceOnCall| Unknown
-  | atHome      | Sending scene "At home" for indoor panels
-  | goOut       | Sending scene "Go out" for indoor panels
-  | goToBed     | Sending scene "Go to bed" for indoor panels
-  | custom      | Sending scene "custom" for indoor panels
-  | setupAlarm  | Turn on the alarm on the indoor panel
-  | closeAlarm  | Turn off the alarm on the indoor panel
-  | muteAudioOutput   | Mutes the audio output of the doorbell / indoor station
-  | unmuteAudioOutput | Unmutes the audio output of the doorbell / indoor station
-  | takeSnapshot  | Take a snapshot and save it to the /media drive
-  | callStatus   | Manually get the Call Status
-  | callerInfo | Manually get the Caller Info
-  | backlightOn | Manually turn on the backlight
-  | backlightOff | Manually turn off the backlight
-  | backlightAuto | Define auto mode on the backlight 
-
-- `<doorbell_name>` is the custom name given to the doorbell in the configuration options, all lowercase and with whitespace substituted by underscores `_`. 
-
-  E.G.: If the doorbell is named `Front door`, the input string must reference it as `front_door`.
-
-- `<optional_parameter>` can be an additional string, used for instance to specify additional options for a command
-
-#### Example
-For more details see the [official documentation]((https://www.home-assistant.io/integrations/hassio/#service-hassioaddon_stdin)) about the `hassio.addon_stdin` service.
-
-#### Unlock a door
-This service unlocks the door connected to the _1st_ output relay of the door station named `Front door`:
-````yaml
-service: hassio.addon_stdin
-data:
-  addon: aff2db71_hikvision_doorbell
-  input: unlock front_door 1
-````
-
-#### Reboot the device
-To reboot the doorbell named `Rear door`:
-````yaml
-service: hassio.addon_stdin
-data:
-  addon: aff2db71_hikvision_doorbell
-  input: reboot rear_door
-````
-
-#### Reject a call
-It might come in handy in tandem with a sensor monitoring the status of the front door. When someone presses the ring button on the doorbell, if the door is opened by hand without picking up the call, the below service rejects the call.
-All indoor stations including the Hik-Connect devices stop ringing.
-
-This example has been tested on a `DS-KD8003` outdoor unit with indoor stations named `Indoor unit`.
-This type of command must be sent to an indoor station only.
-
-````yaml
-service: hassio.addon_stdin
-data:
-  addon: aff2db71_hikvision_doorbell
-  input: reject indoor_unit
-````
-
-## Support
-If you find a bug or need support [open an issue here](https://github.com/pergolafabio/Hikvision-Addons/issues/new) on GitHub.
-If possible, please provide a copy of your logs in the issue form to help us better diagnose the problem!
-
-### Troubleshooting
-Have a look at the **Log** tab of the app in the Home Assistant UI.
-
-You can increase the verbosity by changing the `system.log_level` configuration option. For instance:
 ```yaml
 system:
-  log_level: DEBUG
-  sdk_log_level: DEBUG
+  log_level: INFO
+  sdk_log_level: NONE
 ```
 
-*N.B.*: When app connects to a doorbell for the first time, it might happen that your door station gets stuck, because it is downloading the complete backlog of events. A reboot might be required.
+Для краткой диагностики можно временно включить `DEBUG`. После проверки верните `INFO`/`NONE`, чтобы не создавать большой журнал.
 
+## 6. Управление через STDIN
+
+Большинство действий уже представлены кнопками и переключателями MQTT. Для автоматизаций также доступно действие `hassio.addon_stdin`.
+
+Пример открытия первого реле:
+
+```yaml
+action: hassio.addon_stdin
+data:
+  addon: ecf9b421_hikvision_doorbell
+  input: unlock glavnii_vkhod 1
+```
+
+Имя устройства записывается строчными буквами, пробелы заменяются символом `_`.
+
+Основные команды: `unlock`, `reboot`, `reject`, `answer`, `hangUp`, `takeSnapshot`, `callStatus`, `backlightOn`, `backlightOff`, `backlightAuto`, `setupAlarm`, `closeAlarm`.
+
+## 7. ISAPI
+
+Текстовый элемент **ISAPI Request** предназначен для функций, которых ещё нет среди обычных элементов. Используйте только известные команды: некорректный запрос способен перезапустить SDK или приложение.
+
+Пример чтения состояния вызова:
+
+```text
+GET /ISAPI/VideoIntercom/callStatus?format=json
+```
+
+Пример кратковременного открытия двери:
+
+```text
+PUT /ISAPI/AccessControl/RemoteControl/door/1 <RemoteControlDoor><cmd>open</cmd></RemoteControlDoor>
+```
+
+Дополнительные примеры находятся в [ISAPI.md](ISAPI.md).
+
+## 8. Устранение неполадок
+
+### Устройство не подключается
+
+1. Проверьте доступность IP-адреса из сети Home Assistant.
+2. Проверьте порт SDK и учётные данные.
+3. Убедитесь, что другой клиент не исчерпал допустимое число SDK-сессий.
+4. Перезапустите приложение и посмотрите первые строки журнала.
+
+### Нет события звонка
+
+Новые прошивки некоторых моделей не передают RING через SDK. Задайте `call_state_poll: 5`.
+
+### Нет элементов в Home Assistant
+
+Проверьте работу MQTT-брокера и интеграции MQTT. Затем перезапустите приложение. Не удаляйте MQTT-устройство до завершения проверки.
+
+### После первого запуска приходит много старых событий
+
+Некоторые устройства выгружают накопившийся журнал. Дождитесь окончания синхронизации; в редких случаях требуется перезагрузка домофона.
+
+## 9. Резервное копирование и обновление
+
+Конфигурация приложения входит в резервную копию Home Assistant. Перед крупным обновлением создайте резервную копию настроек. После обновления проверьте журнал, состояние MQTT и открытие двери из Home Assistant.
+
+Сообщить о проблеме в вашем форке: [akinin/Hikvision-Addons](https://github.com/akinin/Hikvision-Addons/issues).

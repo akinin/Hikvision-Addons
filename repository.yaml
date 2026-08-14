@@ -1,4 +1,4 @@
 # https://developers.home-assistant.io/docs/apps/repository#repository-configuration
-name: Hikvision Apps Hardened
+name: Hikvision — защищённые приложения
 url: "https://github.com/akinin/Hikvision-Addons"
 maintainer: akinin <akinin@users.noreply.github.com>

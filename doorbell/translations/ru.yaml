@@ -1,0 +1,67 @@
+configuration:
+  doorbells:
+    name: Домофоны Hikvision
+    description: Добавьте один или несколько наружных или внутренних блоков Hikvision.
+    item:
+      name: Устройство
+      description: Параметры одного домофона или внутренней панели Hikvision.
+    fields:
+      name:
+        name: Название
+        description: Понятное название устройства в Home Assistant и MQTT.
+      ip:
+        name: IP-адрес
+        description: Постоянный локальный IP-адрес устройства Hikvision.
+      port:
+        name: Порт SDK
+        description: Порт Hikvision SDK. Если не задан, используется 8000.
+      username:
+        name: Пользователь
+        description: Учётная запись администратора устройства Hikvision.
+      password:
+        name: Пароль
+        description: Пароль указанной учётной записи Hikvision.
+      output_relays:
+        name: Выходные реле
+        description: Укажите количество реле двери, если приложение определило его неправильно.
+      scenes:
+        name: Сценарии внутренней панели
+        description: Создавать элементы управления режимами охраны поддерживаемой внутренней панели.
+      call_state_poll:
+        name: Проверка состояния вызова, с
+        description: Интервал опроса для устройств, которые не отправляют событие звонка. Пусто — не опрашивать.
+      scene_state_poll:
+        name: Проверка сценария, с
+        description: Интервал опроса состояния сценария внутренней панели. Пусто — не опрашивать.
+      alarm_state_poll:
+        name: Проверка охраны, с
+        description: Интервал опроса состояния охраны внутренней панели. Пусто — не опрашивать.
+  system:
+    name: Журналирование
+    description: Уровни журналов приложения и Hikvision SDK. Для постоянной работы рекомендуется INFO и NONE.
+    fields:
+      log_level:
+        name: Журнал приложения
+        description: ERROR — только ошибки, WARNING — предупреждения, INFO — обычная работа, DEBUG — диагностика.
+      sdk_log_level:
+        name: Журнал Hikvision SDK
+        description: NONE — отключён, ERROR — ошибки, INFO — сведения, DEBUG — подробная диагностика.
+  mqtt:
+    name: MQTT
+    description: Оставьте поля пустыми для автоматического подключения к приложению Mosquitto Broker.
+    fields:
+      host:
+        name: Сервер
+        description: Имя или IP-адрес внешнего MQTT-брокера.
+      port:
+        name: Порт
+        description: Порт MQTT-брокера, обычно 1883 или 8883 для TLS.
+      ssl:
+        name: Использовать TLS
+        description: Подключаться к MQTT-брокеру с шифрованием TLS.
+      username:
+        name: Пользователь
+        description: Имя пользователя MQTT.
+      password:
+        name: Пароль
+        description: Пароль пользователя MQTT.

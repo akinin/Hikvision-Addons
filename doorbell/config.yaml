@@ -1,6 +1,6 @@
-name: Hikvision Doorbell
-description: Connect your Hikvision doorbells to Home Assistant
-version: '3.0.35'
+name: Hikvision Домофон
+description: Локальное подключение домофона Hikvision к Home Assistant через MQTT
+version: '3.0.36'
 image: ghcr.io/akinin/hikvision-doorbell
 slug: hikvision_doorbell
 url: https://github.com/akinin/Hikvision-Addons/tree/main/doorbell
@@ -34,7 +34,7 @@ schema:
       ip: str
       port: "int?"
       username: str
-      password: str
+      password: password
       output_relays: "int?"
       scenes: "bool?"
       call_state_poll: "int?"
@@ -48,7 +48,7 @@ schema:
     port: "int?"
     ssl: "bool?"
     username: "str?"
-    password: "str?"    
+    password: "password?"
 
 # To request MQTT configuration using the supervisor API
 services:
