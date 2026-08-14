@@ -5,6 +5,7 @@ from typing import Any, Optional, TypedDict, cast
 from config import AppConfig
 from doorbell import DeviceType, Doorbell, Registry, sanitize_doorbell_name
 from event import EventHandler
+from mqtt_common import build_mqtt_settings, entity_unique_id
 from paho.mqtt.client import MQTTMessage
 from ha_mqtt_discoverable import Settings, DeviceInfo, Discoverable
 from ha_mqtt_discoverable.sensors import BinarySensor, BinarySensorInfo, SensorInfo, Sensor, SwitchInfo, Switch, DeviceTrigger, DeviceTriggerInfo
@@ -118,17 +119,16 @@ class MQTTHandler(EventHandler):
 
         global _current_mqtt_handler
         _current_mqtt_handler = self
+        self._config = config
+        self._child_handlers: list[MQTTHandler] = []
 
         # Initialize task storage at the start
         self._call_sensor_tasks: dict[Doorbell, asyncio.Task] = {}
+        self._sensors = {}
+        self._availability: dict[Doorbell, bool] = {}
         
         # Save the MQTT settings as an attribute
-        self._mqtt_settings = Settings.MQTT(
-            host=config.host,
-            port=config.port,
-            username=config.username,
-            password=config.password
-        )
+        self._mqtt_settings = build_mqtt_settings(config)
         # Create the sensors for each doorbell:
         for doorbell in doorbells.values():
 
@@ -200,23 +200,22 @@ class MQTTHandler(EventHandler):
                 loop = asyncio.get_event_loop()
                 self._call_sensor_tasks[doorbell] = loop.create_task(poll_call_sensor())
 
-            '''
             ############
             # Online state
-            online_sensor_info = SensorInfo(
-                name="Online state",
-                unique_id=f"{device.identifiers}-online_state",
+            online_sensor_info = BinarySensorInfo(
+                name="Connection",
+                unique_id=entity_unique_id(device, "connection"),
                 device=device,
-                default_entity_id=f"{sanitized_doorbell_name}_online_state",
-                icon="mdi:cloud-check"
+                default_entity_id=f"{sanitized_doorbell_name}_connection",
+                device_class="connectivity",
+                entity_category="diagnostic",
             )
 
             online_settings = Settings(mqtt=self._mqtt_settings, entity=online_sensor_info, manual_availability=True)
-            online_sensor = Sensor(online_settings)
-            online_sensor.set_state("online")
+            online_sensor = BinarySensor(online_settings)
+            online_sensor.on()
             online_sensor.set_availability(True)
-            self._sensors[doorbell]['online'] = online_sensor
-            '''
+            self._sensors[doorbell]['connection'] = online_sensor
             
             ##################
             # Doors
@@ -259,6 +258,45 @@ class MQTTHandler(EventHandler):
                     com_switch.off()
                     com_switch.set_availability(True)
                     self._sensors[doorbell][f'com_{com_id}'] = com_switch
+
+            self._availability[doorbell] = True
+
+    def add_doorbell(self, index: int, doorbell: Doorbell) -> None:
+        """Create discovery entities for a device that connected after startup."""
+        if doorbell in self._sensors:
+            self.set_device_availability(doorbell, True)
+            return
+
+        child_registry = Registry()
+        child_registry[index] = doorbell
+        child = MQTTHandler(self._config, child_registry)
+        self._sensors.update(child._sensors)
+        self._call_sensor_tasks.update(child._call_sensor_tasks)
+        self._availability.update(child._availability)
+        self._child_handlers.append(child)
+
+        global _current_mqtt_handler
+        _current_mqtt_handler = self
+
+    def set_device_availability(self, doorbell: Doorbell, available: bool) -> None:
+        """Publish availability for every entity associated with a doorbell."""
+        if self._availability.get(doorbell) is available:
+            return
+        self._availability[doorbell] = available
+        entities = self._sensors.get(doorbell, {})
+        connection = entities.get('connection')
+        if isinstance(connection, BinarySensor):
+            if available:
+                connection.on()
+            else:
+                connection.off()
+            # The connectivity entity itself must remain available while the
+            # physical device is offline so that HA can display its state.
+            connection.set_availability(True)
+
+        for name, entity in entities.items():
+            if name != 'connection':
+                entity.set_availability(available)
 
     def com_switch_callback(self, client, user_data: tuple[Doorbell, int], message: MQTTMessage):
         doorbell, com_id = user_data

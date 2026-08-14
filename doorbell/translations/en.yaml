@@ -32,6 +32,9 @@ configuration:
         name: Output Relays
         description: >-
           (optional) Set this option if you don't see the correct number of door switches or if you have attached an secure door control module on your indoor
+      snapshot:
+        name: Snapshot on ring
+        description: Automatically capture and publish a snapshot when an incoming call event is received.
       scenes:
         name: Scenes
         description: >-
@@ -54,6 +57,9 @@ configuration:
         name: SDK Log Level
         description: >-
           NONE|ERROR|INFO|DEBUG.
+      health_check_interval:
+        name: Connection check interval
+        description: Seconds between device health checks and automatic reconnection attempts.
 # Translation for the 'mqtt' section
   mqtt:
     name: Mqtt

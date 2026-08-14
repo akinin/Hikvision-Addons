@@ -53,7 +53,7 @@ def test_reboot_command(mocker: MockerFixture):
     mocked_doorbell.reboot_device.assert_called_once()
 
 
-def test_debug_command(mocker: MockerFixture):
+def test_debug_command_is_not_executed(mocker: MockerFixture):
     mocked_registry = mocker.patch('doorbell.Registry', autospec=True)
     reader = InputReader(mocked_registry)
     command = "debug doorbell get_test"
@@ -61,7 +61,7 @@ def test_debug_command(mocker: MockerFixture):
 
     mocked_registry.getByName.assert_called_once_with("doorbell")
     mocked_doorbell = mocked_registry.getByName('doorbell')
-    mocked_doorbell.get_test.assert_called_once()
+    mocked_doorbell.get_test.assert_not_called()
 
 
 def test_not_raise_exception(mocker: MockerFixture):

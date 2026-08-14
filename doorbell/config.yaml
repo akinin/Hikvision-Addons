@@ -1,6 +1,6 @@
 name: Hikvision Домофон
 description: Локальное подключение домофона Hikvision к Home Assistant через MQTT
-version: '3.0.36'
+version: '3.0.37'
 image: ghcr.io/akinin/hikvision-doorbell
 slug: hikvision_doorbell
 url: https://github.com/akinin/Hikvision-Addons/tree/main/doorbell
@@ -21,10 +21,12 @@ options:
       ip: ""
       username: admin
       password: ""
+      snapshot: false
       scenes: false
   system:
     log_level: INFO
     sdk_log_level: NONE
+    health_check_interval: 30
   mqtt: {}
 
 # Schema for the options above
@@ -36,13 +38,15 @@ schema:
       username: str
       password: password
       output_relays: "int?"
+      snapshot: "bool?"
       scenes: "bool?"
       call_state_poll: "int?"
       scene_state_poll: "int?"
       alarm_state_poll: "int?"
   system:
-    log_level: match(^ERROR|WARNING|INFO|DEBUG$)
-    sdk_log_level: match(^NONE|ERROR|INFO|DEBUG$)?
+    log_level: list(ERROR|WARNING|INFO|DEBUG)
+    sdk_log_level: list(NONE|ERROR|INFO|DEBUG)
+    health_check_interval: "int(10,3600)?"
   mqtt:
     host: "str?"
     port: "int?"

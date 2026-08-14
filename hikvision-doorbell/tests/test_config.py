@@ -54,3 +54,25 @@ def test_load_config_mqtt():
     config.load("tests/assets/test_config_mqtt.json")
     assert config.mqtt.host is not None
     assert config.mqtt.port is not None
+
+
+def test_rejects_duplicate_doorbell_names():
+    with pytest.raises(ValidationError, match="Doorbell names must be unique"):
+        AppConfig(
+            doorbells=[
+                {"name": "Front Door", "ip": "192.0.2.10", "username": "user", "password": "secret"},
+                {"name": "front-door", "ip": "192.0.2.11", "username": "user", "password": "secret"},
+            ],
+            system={},
+        )
+
+
+def test_rejects_unsafe_poll_interval():
+    with pytest.raises(ValidationError):
+        AppConfig.Doorbell(
+            name="Entrance",
+            ip="192.0.2.10",
+            username="user",
+            password="secret",
+            call_state_poll=1,
+        )

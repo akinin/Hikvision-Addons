@@ -5,6 +5,7 @@ from config import AppConfig
 from doorbell import DeviceType, Doorbell, Registry
 from mqtt_input import MQTTInput
 from ha_mqtt_discoverable import DeviceInfo
+from unittest.mock import Mock
 
 
 @pytest.fixture
@@ -38,3 +39,43 @@ def test_init(mock_doorbell: Doorbell, mocker: MockerFixture):
 
     input = MQTTInput(mqtt_config, registry)
     assert input is not None
+
+
+def test_isapi_callback_preserves_payload_spaces(mocker: MockerFixture):
+    mqtt_input = MQTTInput.__new__(MQTTInput)
+    doorbell = Mock()
+    doorbell._config.name = "Entrance"
+    doorbell._call_isapi.return_value = "ok"
+    text_entity = Mock()
+    mqtt_input._sensors = {doorbell: {"isapi_text": text_entity}}
+    mqtt_input._get_doorbell_from_args = Mock(return_value=doorbell)
+    message = Mock()
+    message.payload = (
+        b"PUT /ISAPI/example <Root><Value>Hello world</Value></Root>"
+    )
+
+    mqtt_input._isapi_input_callback(None, doorbell, message)
+
+    doorbell._call_isapi.assert_called_once_with(
+        "PUT",
+        "/ISAPI/example",
+        "<Root><Value>Hello world</Value></Root>",
+    )
+    text_entity.set_attributes.assert_called_once_with(
+        {"method": "PUT", "path": "/ISAPI/example", "response": "ok"}
+    )
+
+
+def test_isapi_callback_rejects_unsafe_path():
+    mqtt_input = MQTTInput.__new__(MQTTInput)
+    doorbell = Mock()
+    doorbell._config.name = "Entrance"
+    text_entity = Mock()
+    mqtt_input._sensors = {doorbell: {"isapi_text": text_entity}}
+    mqtt_input._get_doorbell_from_args = Mock(return_value=doorbell)
+    message = Mock()
+    message.payload = b"PUT /System/reboot payload"
+
+    mqtt_input._isapi_input_callback(None, doorbell, message)
+
+    doorbell._call_isapi.assert_not_called()

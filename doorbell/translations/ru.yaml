@@ -17,13 +17,16 @@ configuration:
         description: Порт Hikvision SDK. Если не задан, используется 8000.
       username:
         name: Пользователь
-        description: Учётная запись администратора устройства Hikvision.
+        description: Учётная запись Hikvision с правами на используемые функции. По возможности создайте отдельного пользователя.
       password:
         name: Пароль
         description: Пароль указанной учётной записи Hikvision.
       output_relays:
         name: Выходные реле
         description: Укажите количество реле двери, если приложение определило его неправильно.
+      snapshot:
+        name: Снимок при звонке
+        description: Автоматически делать и публиковать снимок при событии входящего вызова.
       scenes:
         name: Сценарии внутренней панели
         description: Создавать элементы управления режимами охраны поддерживаемой внутренней панели.
@@ -46,6 +49,9 @@ configuration:
       sdk_log_level:
         name: Журнал Hikvision SDK
         description: NONE — отключён, ERROR — ошибки, INFO — сведения, DEBUG — подробная диагностика.
+      health_check_interval:
+        name: Проверка соединения, с
+        description: Интервал проверки доступности домофона и автоматического восстановления соединения.
   mqtt:
     name: MQTT
     description: Оставьте поля пустыми для автоматического подключения к приложению Mosquitto Broker.

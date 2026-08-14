@@ -32,6 +32,9 @@ configuration:
         name: Przekaźniki wyjściowe
         description: >-
           (opcjonalnie) Ustaw tę opcję, jeśli nie widzisz prawidłowej liczby przełączników drzwi lub jeśli na swoim wewnętrznym urządzeniu podłączyłeś bezpieczny moduł sterowania drzwiami.
+      snapshot:
+        name: Zdjęcie przy dzwonieniu
+        description: Automatycznie wykonuj i publikuj zdjęcie po odebraniu zdarzenia połączenia.
       scenes:
         name: Sceny
         description: >-
@@ -54,6 +57,9 @@ configuration:
         name: Poziom dziennika SDK
         description: >-
           NONE|ERROR|INFO|DEBUG.
+      health_check_interval:
+        name: Interwał kontroli połączenia
+        description: Liczba sekund pomiędzy kontrolami urządzenia i próbami ponownego połączenia.
 # Translation for the 'mqtt' section
   mqtt:
     name: Mqtt
