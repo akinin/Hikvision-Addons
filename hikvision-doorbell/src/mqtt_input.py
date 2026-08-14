@@ -2,7 +2,6 @@ import json
 import asyncio
 import os
 import base64
-import re
 import time
 from typing import Any, cast
 from config import AppConfig
@@ -12,6 +11,7 @@ from ha_mqtt_discoverable import Settings, Discoverable
 from ha_mqtt_discoverable.sensors import Button, ButtonInfo, Text, TextInfo, SensorInfo, Sensor, ImageInfo, Image, SelectInfo, Select, SwitchInfo
 from loguru import logger
 from mqtt import extract_device_info
+from mqtt_common import build_mqtt_settings
 from paho.mqtt.client import MQTTMessage
 from sdk.hcnetsdk import (NET_DVR_JPEGPARA, NET_DVR_DEVICEINFO_V30)
 import xml.etree.ElementTree as ET
@@ -34,19 +34,18 @@ class MQTTInput():
         global _current_instance
         _current_instance = self
 
+        self._config = config
+        self._child_inputs: list[MQTTInput] = []
         self._doorbells = doorbells
         logger.debug("Setting up MQTTInput")
-        mqtt_settings = Settings.MQTT(
-            host=config.host,
-            port=config.port,
-            username=config.username,
-            password=config.password
-        )
+        mqtt_settings = build_mqtt_settings(config)
 
         # Initialize storage
         self._sensors = {}
+        self._last_snapshot_paths = {}
         self._scene_sensor_tasks = {}
         self._alarm_sensor_tasks = {}
+        self._availability: dict[Doorbell, bool] = {}
 
         for doorbell in doorbells.values():
             self._sensors[doorbell] = {}
@@ -63,6 +62,7 @@ class MQTTInput():
                 name="Reboot",
                 unique_id=f"{sanitized_doorbell_name}_reboot",
                 device_class="restart",
+                entity_category="config",
                 device=device,
                 default_entity_id=f"{sanitized_doorbell_name}_reboot")
             settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
@@ -115,6 +115,7 @@ class MQTTInput():
                 name="Mute audio output",
                 unique_id=f"{sanitized_doorbell_name}_mute_audio_output",
                 device=device,
+                enabled_by_default=False,
                 icon="mdi:volume-mute",
                 default_entity_id=f"{sanitized_doorbell_name}_mute_audio_output")
             settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
@@ -127,6 +128,7 @@ class MQTTInput():
                 name="Unmute audio output",
                 unique_id=f"{sanitized_doorbell_name}_unmute_audio_output",
                 device=device,
+                enabled_by_default=False,
                 icon="mdi:volume-high",
                 default_entity_id=f"{sanitized_doorbell_name}_unmute_audio_output")
             settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
@@ -139,8 +141,8 @@ class MQTTInput():
                 name="ISAPI request",
                 unique_id=f"{sanitized_doorbell_name}_isapi_request",
                 device=device,
-                # enabled_by_default=False,
-                # entity_category="diagnostic",
+                enabled_by_default=False,
+                entity_category="config",
                 default_entity_id=f"{sanitized_doorbell_name}_isapi_request")
             settings = Settings(mqtt=mqtt_settings, entity=text_info, manual_availability=True, user_data=doorbell)
             isapi_text = Text(settings, self._isapi_input_callback)
@@ -153,6 +155,8 @@ class MQTTInput():
                 name="Caller info",
                 unique_id=f"{sanitized_doorbell_name}_caller_info",
                 device=device,
+                enabled_by_default=False,
+                entity_category="diagnostic",
                 icon="mdi:phone-log",
                 default_entity_id=f"{sanitized_doorbell_name}_caller_info")
             settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
@@ -166,6 +170,8 @@ class MQTTInput():
                 name="Call status",
                 unique_id=f"{sanitized_doorbell_name}_call_status",
                 device=device,
+                enabled_by_default=False,
+                entity_category="diagnostic",
                 icon="mdi:phone-log",
                 default_entity_id=f"{sanitized_doorbell_name}_call_status")
             settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
@@ -224,6 +230,7 @@ class MQTTInput():
                 settings = Settings(mqtt=mqtt_settings, entity=select_info, manual_availability=True, user_data=doorbell)
                 mode_select = Select(settings, self._backlight_mode_callback)
                 mode_select.set_availability(True)
+                self._sensors[doorbell]['backlight_mode'] = mode_select
 
 
             ##################
@@ -432,6 +439,7 @@ class MQTTInput():
                     name="Broadcast Audio Path",
                     unique_id=f"{sanitized_doorbell_name}_broadcast_audio_path",
                     device=device,
+                    entity_category="config",
                     icon="mdi:format-text",
                     default_entity_id=f"{sanitized_doorbell_name}_broadcast_audio_path"
                 )
@@ -439,6 +447,32 @@ class MQTTInput():
                 broadcast_audio_path_text = Text(settings, self._broadcast_audio_path_callback)
                 broadcast_audio_path_text.set_availability(True)
                 self._sensors[doorbell]['broadcast_audio_path'] = broadcast_audio_path_text
+
+            self._availability[doorbell] = True
+
+    def add_doorbell(self, index: int, doorbell: Doorbell) -> None:
+        """Create command entities for a device that connected after startup."""
+        if doorbell in self._sensors:
+            self.set_device_availability(doorbell, True)
+            return
+
+        child_registry = Registry()
+        child_registry[index] = doorbell
+        child = MQTTInput(self._config, child_registry)
+        self._doorbells[index] = doorbell
+        self._sensors.update(child._sensors)
+        self._last_snapshot_paths.update(child._last_snapshot_paths)
+        self._scene_sensor_tasks.update(child._scene_sensor_tasks)
+        self._alarm_sensor_tasks.update(child._alarm_sensor_tasks)
+        self._availability.update(child._availability)
+        if hasattr(child, '_image_topics'):
+            if not hasattr(self, '_image_topics'):
+                self._image_topics = {}
+            self._image_topics.update(child._image_topics)
+        self._child_inputs.append(child)
+
+        global _current_instance
+        _current_instance = self
 
     def _load_persistent_data(self):
         try:
@@ -483,29 +517,25 @@ class MQTTInput():
         if isinstance(doorbell, Doorbell):
             return doorbell
 
-        # 1. Clean the whole topic (removes symbols/spaces)
+        # Subscriber callbacks normally receive the exact Doorbell through
+        # user_data. Keep a strict topic fallback for older library versions.
         clean_topic = sanitize_doorbell_name(message.topic)
-        # 2. Make it vowel-blind
-        vowel_blind_topic = re.sub(r'[aeiou]', '', clean_topic)
+        matches = [
+            candidate
+            for candidate in self._doorbells.values()
+            if sanitize_doorbell_name(candidate._config.name) in clean_topic
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        raise ValueError(f"Cannot safely map MQTT topic to a doorbell: {message.topic}")
 
-        for d in self._doorbells.values():
-            # 3. Clean the config name.
-            clean_name = sanitize_doorbell_name(d._config.name)
-            
-            # Try exact match first
-            if clean_name and clean_name in clean_topic:
-                return d
-                
-            # 4. Try vowel-blind match:
-            vowel_blind_name = re.sub(r'[aeiou]', '', clean_name)
-            
-            # Now 'vowel-blind' name WILL be found in 'hmdbutton...'
-            if vowel_blind_name and vowel_blind_name in vowel_blind_topic:
-                return d
-                
-        # If we get here, log the failure and return None (which causes the crash)
-        logger.error(f"NO MATCH! Vowel-blind Name: {vowel_blind_name} | Vowel-blind Topic: {vowel_blind_topic}")
-        return None
+    def set_device_availability(self, doorbell: Doorbell, available: bool) -> None:
+        """Publish availability for command and image entities."""
+        if self._availability.get(doorbell) is available:
+            return
+        self._availability[doorbell] = available
+        for entity in self._sensors.get(doorbell, {}).values():
+            entity.set_availability(available)
 
     def _reboot_callback(self, client, doorbell: Doorbell, message: MQTTMessage):
         doorbell = self._get_doorbell_from_args(doorbell, message)
@@ -736,6 +766,8 @@ class MQTTInput():
 
         try:
             doorbell._call_isapi("PUT", url, json.dumps(requestBody))
+            mode_select = cast(Select, self._sensors[doorbell]['backlight_mode'])
+            mode_select.select_option(command)
         except SDKError as err:
             logger.error("Error while updating mode via ISAPI: {}", err)
 
@@ -951,27 +983,33 @@ class MQTTInput():
         text_entity = cast(Text, self._sensors[doorbell]['isapi_text'])
         text_entity.set_text(text_string)
         
-        # Decode the HTTP method, URL and request body by splitting the input string
-        try:
-            http_method, url, *request_body = text_string.split()
-        except ValueError:
+        # Preserve spaces in XML/JSON bodies and validate the command before it
+        # reaches the native SDK.
+        parts = text_string.strip().split(maxsplit=2)
+        if len(parts) < 2:
             logger.warning(
                 "Invalid ISAPI input (expected format: METHOD URL [BODY]): {}",
                 text_string if text_string.strip() else "<empty>",
             )
             return
 
-        # If the user has not provided a request body, default to an empty string
-        if not request_body:
-            request_body = [""]
+        http_method = parts[0].upper()
+        url = parts[1]
+        request_body = parts[2] if len(parts) == 3 else ""
+        if http_method not in {"GET", "POST", "PUT"}:
+            logger.warning("Rejected unsupported ISAPI method: {}", http_method)
+            return
+        if not url.startswith("/ISAPI/") or any(character.isspace() for character in url):
+            logger.warning("Rejected invalid ISAPI path")
+            return
 
         # Avoid crashing inside the callback, otherwise we lose the MQTT client
         try:
-            # Use the first element if it exists, otherwise an empty string
-            response = doorbell._call_isapi(http_method, url, request_body[0] if request_body else "")
+            response = doorbell._call_isapi(http_method, url, request_body)
             attributes = {
-                "request": text_string,
-                "response": response
+                "method": http_method,
+                "path": url,
+                "response": response[:16384],
             }
             text_entity.set_attributes(attributes)
         except SDKError as err:

@@ -1,5 +1,6 @@
 from enum import Enum
 import os
+import unicodedata
 from typing import Any, Optional
 from goodconf import GoodConf
 from pydantic import Field, BaseModel, AnyHttpUrl, field_validator, ConfigDict
@@ -86,17 +87,25 @@ class AppConfig(GoodConf):
     default_files: list[str] = ["/data/options.json", "default_config.yaml"]
 
     class Doorbell(BaseModel):
-        name: str = Field(description="Custom name of the doorbell")
-        ip: str
-        port: Optional[int] = 8000
-        username: str
-        password: str
-        output_relays: Optional[int] = None
-        snapshot: Optional[bool] = False
-        scenes: Optional[bool] = False
-        call_state_poll: Optional[int] = None
-        scene_state_poll: Optional[int] = 15
-        alarm_state_poll: Optional[int] = 15
+        name: str = Field(min_length=1, description="Custom name of the doorbell")
+        ip: str = Field(min_length=1)
+        port: int = Field(default=8000, ge=1, le=65535)
+        username: str = Field(min_length=1)
+        password: str = Field(min_length=1)
+        output_relays: Optional[int] = Field(default=None, ge=0, le=64)
+        snapshot: bool = False
+        scenes: bool = False
+        call_state_poll: Optional[int] = Field(default=None, ge=5, le=3600)
+        scene_state_poll: Optional[int] = Field(default=15, ge=5, le=3600)
+        alarm_state_poll: Optional[int] = Field(default=15, ge=5, le=3600)
+
+        @field_validator('name', 'ip', 'username', 'password')
+        @classmethod
+        def reject_blank_values(cls, value: str):
+            value = value.strip()
+            if not value:
+                raise ValueError("Value must not be blank")
+            return value
 
     class HomeAssistant(BaseModel):
         url: AnyHttpUrl = Field(description="Base url of Home Assistant")
@@ -113,15 +122,24 @@ class AppConfig(GoodConf):
             return v
 
     class MQTT(BaseModel):
-        host: str
-        port: Optional[int] = 1883
-        ssl: Optional[bool] = Field(default=False)
+        host: str = Field(min_length=1)
+        port: int = Field(default=1883, ge=1, le=65535)
+        ssl: bool = Field(default=False)
         username: Optional[str] = None
         password: Optional[str] = None
+
+        @field_validator('host')
+        @classmethod
+        def reject_blank_host(cls, value: str):
+            value = value.strip()
+            if not value:
+                raise ValueError("MQTT host must not be blank")
+            return value
 
     class System(BaseModel):
         log_level: LogLevel = LogLevel.WARNING
         sdk_log_level: SDKLogLevel = SDKLogLevel.NONE
+        health_check_interval: int = Field(default=30, ge=10, le=3600)
 
         @field_validator('sdk_log_level', mode='before')
         @classmethod
@@ -138,6 +156,21 @@ class AppConfig(GoodConf):
     # Use a factory function to automatically load the MQTT configuration using the supervisor API, if MQTT is available
     mqtt: Optional[MQTT] = None
     system: System
+
+    @field_validator('doorbells')
+    @classmethod
+    def require_unique_doorbell_names(cls, doorbells: list[Doorbell]):
+        normalized_names = [
+            "".join(
+                character
+                for character in unicodedata.normalize('NFD', doorbell.name.casefold())
+                if character.isalnum()
+            )
+            for doorbell in doorbells
+        ]
+        if len(normalized_names) != len(set(normalized_names)):
+            raise ValueError("Doorbell names must be unique after MQTT normalization")
+        return doorbells
 
     @field_validator('mqtt', mode='before')
     @classmethod
@@ -171,6 +204,3 @@ class AppConfig(GoodConf):
             logger.error("Failed to fetch MQTT config from Supervisor: {}", e)
         
         return None
-        
-        # 3. If v is a valid dict with a host, use it
-        return v

@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 
 
 class DeviceType(IntEnum):
+    UNKNOWN = 0
     OUTDOOR = 603
     INDOOR = 602
     VillaVTO = 605
@@ -75,6 +76,9 @@ class Doorbell():
         self._sdk = sdk
         self._config = config
         self._id = id
+        self.user_id = -1
+        self.alarm_handle = -1
+        self._type = DeviceType.UNKNOWN
         self._previouse_audio_out_volume = "5"
 
         '''
@@ -100,7 +104,8 @@ class Doorbell():
 
         try:
             self._type = DeviceType(self._device_info.wDevType)
-        except KeyError:
+        except ValueError:
+            self._type = DeviceType.UNKNOWN
             logger.warning("Unknown device type: {}", self._device_info.wDevType)
 
         logger.debug("Login returned user ID: {}", self.user_id)
@@ -120,15 +125,30 @@ class Doorbell():
         alarm_param.bySupport = alarm_param.bySupport & ~0x02
 
         logger.debug("Arming the device via SDK")
-        alarm_handle = self._sdk.NET_DVR_SetupAlarmChan_V50(
+        if self.alarm_handle >= 0:
+            self._sdk.NET_DVR_CloseAlarmChan_V30(self.alarm_handle)
+        self.alarm_handle = self._sdk.NET_DVR_SetupAlarmChan_V50(
             self.user_id, alarm_param, None, 0)
-        if alarm_handle < 0:
+        if self.alarm_handle < 0:
             raise SDKError(self._sdk, f"Error while listening to events in {self._config.name}")
 
     def logout(self):
+        if self.user_id < 0:
+            return
         logout_result = self._sdk.NET_DVR_Logout_V30(self.user_id)
         if not logout_result:
             logger.debug("SDK logout result {}", logout_result)
+        else:
+            self.user_id = -1
+
+    def disconnect(self):
+        """Release the alarm channel and authenticated SDK session."""
+        if self.alarm_handle >= 0:
+            close_result = self._sdk.NET_DVR_CloseAlarmChan_V30(self.alarm_handle)
+            if not close_result:
+                logger.debug("SDK close alarm result {}", close_result)
+            self.alarm_handle = -1
+        self.logout()
 
     def unlock_com(self, com_id: int):
 
@@ -1112,7 +1132,12 @@ class Doorbell():
         return call_status.byCallStatus
 
     def __del__(self):
-        self.logout()
+        try:
+            self.disconnect()
+        except Exception:
+            # Destructors run during interpreter teardown; explicit shutdown in
+            # main() remains the authoritative cleanup path.
+            pass
 
 
 class Registry(dict[int, Doorbell]):
