@@ -1,6 +1,6 @@
 name: Hikvision Домофон
 description: Локальное подключение домофона Hikvision к Home Assistant через MQTT
-version: '3.0.37'
+version: '3.0.38'
 image: ghcr.io/akinin/hikvision-doorbell
 slug: hikvision_doorbell
 url: https://github.com/akinin/Hikvision-Addons/tree/main/doorbell

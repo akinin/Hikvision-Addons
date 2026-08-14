@@ -5,7 +5,12 @@ from typing import Any, Optional, TypedDict, cast
 from config import AppConfig
 from doorbell import DeviceType, Doorbell, Registry, sanitize_doorbell_name
 from event import EventHandler
-from mqtt_common import build_mqtt_settings, entity_unique_id
+from mqtt_common import (
+    build_mqtt_settings,
+    entity_unique_id,
+    manage_mqtt_entity,
+    publish_entity_availability,
+)
 from paho.mqtt.client import MQTTMessage
 from ha_mqtt_discoverable import Settings, DeviceInfo, Discoverable
 from ha_mqtt_discoverable.sensors import BinarySensor, BinarySensorInfo, SensorInfo, Sensor, SwitchInfo, Switch, DeviceTrigger, DeviceTriggerInfo
@@ -260,6 +265,8 @@ class MQTTHandler(EventHandler):
                     self._sensors[doorbell][f'com_{com_id}'] = com_switch
 
             self._availability[doorbell] = True
+            for entity in self._sensors[doorbell].values():
+                manage_mqtt_entity(entity)
 
     def add_doorbell(self, index: int, doorbell: Doorbell) -> None:
         """Create discovery entities for a device that connected after startup."""
@@ -280,8 +287,6 @@ class MQTTHandler(EventHandler):
 
     def set_device_availability(self, doorbell: Doorbell, available: bool) -> None:
         """Publish availability for every entity associated with a doorbell."""
-        if self._availability.get(doorbell) is available:
-            return
         self._availability[doorbell] = available
         entities = self._sensors.get(doorbell, {})
         connection = entities.get('connection')
@@ -292,11 +297,11 @@ class MQTTHandler(EventHandler):
                 connection.off()
             # The connectivity entity itself must remain available while the
             # physical device is offline so that HA can display its state.
-            connection.set_availability(True)
+            publish_entity_availability(connection, True)
 
         for name, entity in entities.items():
             if name != 'connection':
-                entity.set_availability(available)
+                publish_entity_availability(entity, available)
 
     def com_switch_callback(self, client, user_data: tuple[Doorbell, int], message: MQTTMessage):
         doorbell, com_id = user_data
@@ -700,6 +705,7 @@ class MQTTHandler(EventHandler):
             device_trigger = DeviceTrigger(settings)
             # Save the entity in the dict for future reference
             self._sensors[doorbell][trigger["name"]] = device_trigger
+            manage_mqtt_entity(device_trigger)
 
         # Cast to know type DeviceTrigger
         device_trigger = cast(DeviceTrigger, device_trigger)

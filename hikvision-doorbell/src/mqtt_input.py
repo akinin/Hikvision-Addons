@@ -11,7 +11,11 @@ from ha_mqtt_discoverable import Settings, Discoverable
 from ha_mqtt_discoverable.sensors import Button, ButtonInfo, Text, TextInfo, SensorInfo, Sensor, ImageInfo, Image, SelectInfo, Select, SwitchInfo
 from loguru import logger
 from mqtt import extract_device_info
-from mqtt_common import build_mqtt_settings
+from mqtt_common import (
+    build_mqtt_settings,
+    manage_mqtt_entity,
+    publish_entity_availability,
+)
 from paho.mqtt.client import MQTTMessage
 from sdk.hcnetsdk import (NET_DVR_JPEGPARA, NET_DVR_DEVICEINFO_V30)
 import xml.etree.ElementTree as ET
@@ -68,6 +72,7 @@ class MQTTInput():
             settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
             reboot_button = Button(settings, self._reboot_callback)
             reboot_button.set_availability(True)
+            self._sensors[doorbell]['reboot'] = reboot_button
             
             # Consider only indoor units for the next sensors
             # if doorbell._type is not DeviceType.INDOOR:
@@ -84,6 +89,7 @@ class MQTTInput():
             settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
             reject_button = Button(settings, self._reject_call_callback)
             reject_button.set_availability(True)
+            self._sensors[doorbell]['reject_call'] = reject_button
 
             ###########
             # Hangup call button
@@ -96,6 +102,7 @@ class MQTTInput():
             settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
             hangup_button = Button(settings, self._hangup_call_callback)
             hangup_button.set_availability(True)
+            self._sensors[doorbell]['hangup_call'] = hangup_button
             
             ###########
             # Answer call button
@@ -108,6 +115,7 @@ class MQTTInput():
             settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
             answer_button = Button(settings, self._answer_call_callback)
             answer_button.set_availability(True)
+            self._sensors[doorbell]['answer_call'] = answer_button
 
             ###########
             # Mute audio output button
@@ -121,6 +129,7 @@ class MQTTInput():
             settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
             mute_button = Button(settings, self._mute_audio_output_callback)
             mute_button.set_availability(True)
+            self._sensors[doorbell]['mute_audio'] = mute_button
 
             ###########
             # Unmute audio output button
@@ -134,6 +143,7 @@ class MQTTInput():
             settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
             unmute_button = Button(settings, self._unmute_audio_output_callback)
             unmute_button.set_availability(True)
+            self._sensors[doorbell]['unmute_audio'] = unmute_button
 
             ###########
             # ISAPI request input text
@@ -327,6 +337,7 @@ class MQTTInput():
                 settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
                 at_home_button = Button(settings, self._at_home_callback)
                 at_home_button.set_availability(True)
+                self._sensors[doorbell]['scene_at_home'] = at_home_button
 
                 ###########
                 # goOut Button
@@ -339,6 +350,7 @@ class MQTTInput():
                 settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
                 go_out_button = Button(settings, self._go_out_callback)
                 go_out_button.set_availability(True)
+                self._sensors[doorbell]['scene_go_out'] = go_out_button
 
                 ###########
                 # goToBed Button
@@ -351,6 +363,7 @@ class MQTTInput():
                 settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
                 go_to_bed_button = Button(settings, self._go_to_bed_callback)
                 go_to_bed_button.set_availability(True)
+                self._sensors[doorbell]['scene_go_to_bed'] = go_to_bed_button
 
                 ###########
                 # custom Button
@@ -363,6 +376,7 @@ class MQTTInput():
                 settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
                 custom_button = Button(settings, self._custom_callback)
                 custom_button.set_availability(True)
+                self._sensors[doorbell]['scene_custom'] = custom_button
 
                 ###########
                 # setupAlarm Button
@@ -375,6 +389,7 @@ class MQTTInput():
                 settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
                 setupAlarm_button = Button(settings, self._setupAlarm_callback)
                 setupAlarm_button.set_availability(True)
+                self._sensors[doorbell]['alarm_setup'] = setupAlarm_button
 
                 ###########
                 # closeAlarm Button
@@ -387,6 +402,7 @@ class MQTTInput():
                 settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
                 closeAlarm_button = Button(settings, self._closeAlarm_callback)
                 closeAlarm_button.set_availability(True)
+                self._sensors[doorbell]['alarm_close'] = closeAlarm_button
 
             if doorbell._type is DeviceType.INDOOR:
 
@@ -400,6 +416,7 @@ class MQTTInput():
                 settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
                 call_on_button = Button(settings, self._call_on_callback)
                 call_on_button.set_availability(True)
+                self._sensors[doorbell]['call_on'] = call_on_button
 
                 # Call Off Button
                 button_info = ButtonInfo(
@@ -411,6 +428,7 @@ class MQTTInput():
                 settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
                 call_off_button = Button(settings, self._call_off_callback)
                 call_off_button.set_availability(True)
+                self._sensors[doorbell]['call_off'] = call_off_button
 
                 # Broadcast On Button
                 button_info = ButtonInfo(
@@ -422,6 +440,7 @@ class MQTTInput():
                 settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
                 broadcast_on_button = Button(settings, self._broadcast_on_callback)
                 broadcast_on_button.set_availability(True)
+                self._sensors[doorbell]['broadcast_on'] = broadcast_on_button
 
                 # Broadcast Off Button
                 button_info = ButtonInfo(
@@ -433,6 +452,7 @@ class MQTTInput():
                 settings = Settings(mqtt=mqtt_settings, entity=button_info, manual_availability=True, user_data=doorbell)
                 broadcast_off_button = Button(settings, self._broadcast_off_callback)
                 broadcast_off_button.set_availability(True)
+                self._sensors[doorbell]['broadcast_off'] = broadcast_off_button
 
                 # Broadcast Audio Path Text Entity
                 text_info = TextInfo(
@@ -449,6 +469,8 @@ class MQTTInput():
                 self._sensors[doorbell]['broadcast_audio_path'] = broadcast_audio_path_text
 
             self._availability[doorbell] = True
+            for entity in self._sensors[doorbell].values():
+                manage_mqtt_entity(entity)
 
     def add_doorbell(self, index: int, doorbell: Doorbell) -> None:
         """Create command entities for a device that connected after startup."""
@@ -531,11 +553,9 @@ class MQTTInput():
 
     def set_device_availability(self, doorbell: Doorbell, available: bool) -> None:
         """Publish availability for command and image entities."""
-        if self._availability.get(doorbell) is available:
-            return
         self._availability[doorbell] = available
         for entity in self._sensors.get(doorbell, {}).values():
-            entity.set_availability(available)
+            publish_entity_availability(entity, available)
 
     def _reboot_callback(self, client, doorbell: Doorbell, message: MQTTMessage):
         doorbell = self._get_doorbell_from_args(doorbell, message)
